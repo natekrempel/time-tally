@@ -1,0 +1,25 @@
+{
+  "name": "time-tally",
+  "version": "1.0.0",
+  "description": "A way to track time during a running process such as gulp",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/natekrempel/time-tally.git"
+  },
+  "author": "natekrempel",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/natekrempel/time-tally/issues"
+  },
+  "homepage": "https://github.com/natekrempel/time-tally",
+  "dependencies": {
+    "fs": "0.0.2",
+    "git-config": "0.0.7",
+    "moment": "^2.10.6",
+    "nedb": "^1.4.0"
+  }
+}
