@@ -4,12 +4,12 @@ var Datastore = require('nedb'),
     moment = require('moment'),
     db = {};
 
-function GulpTimer() {
+function TimeTally() {
     this.user = gitConfig.sync().user.email;
     this.packageName = JSON.parse(fs.readFileSync("./package.json")).name;
 }
 
-GulpTimer.prototype.init = function() {
+TimeTally.prototype.init = function() {
 
     db = new Datastore({
         filename: './time-logs/'+this.user+'.json',
@@ -34,7 +34,7 @@ GulpTimer.prototype.init = function() {
 
 };
 
-GulpTimer.prototype.startTimer = function () {
+TimeTally.prototype.startTimer = function () {
     console.log(" ===== START TIMER =====");
     // get current time in file and append to it
 
@@ -48,7 +48,7 @@ GulpTimer.prototype.startTimer = function () {
     });
 };
 
-GulpTimer.prototype.endTimer = function (err) {
+TimeTally.prototype.endTimer = function (err) {
     console.log(" ===== END TIMER =====");
     var newDate = new Date();
     if (err) console.log(err.stack);
@@ -67,4 +67,40 @@ GulpTimer.prototype.endTimer = function (err) {
 
 };
 
-module.exports = GulpTimer;
+TimeTally.prototype.total = function () {
+    db.loadDatabase();
+
+    db.find({duration: {$exists: true}}, function(err, docs){
+        var total = 0,
+            i;
+        for (i = 0; i < docs.length; i++) {
+            console.log(docs[i]._id, moment.duration(docs[i].duration)._data.hours);
+            total += docs[i].duration;
+        }
+        total = moment.duration(total);
+        // Log out Time for the entirety of the project
+        console.log(total._data.hours+"hrs", total._data.minutes+"min", total._data.seconds+"s");
+        process.exit();
+    });
+};
+
+TimeTally.prototype.dayTotal = function () {
+    db.loadDatabase();
+
+    var currentDate = moment().toDate().toJSON();
+    db.find({duration: {$exists: true}, $where: function(){ return moment(this.startTime).isSame(new Date(), 'day');}}, function(err, docs){
+        var total = 0,
+            i;
+
+        for (i = 0; i < docs.length; i++) {
+            total += docs[i].duration;
+        }
+
+        total = moment.duration(total);
+        // Log out Time for the day
+        console.log(total._data.hours+"hrs", total._data.minutes+"min", total._data.seconds+"s");
+        process.exit();
+    });
+};
+
+module.exports = TimeTally;
