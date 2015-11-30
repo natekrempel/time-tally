@@ -4,7 +4,7 @@
   "description": "A way to track time during a running process such as gulp",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "./test/index.js"
   },
   "repository": {
     "type": "git",
@@ -21,5 +21,9 @@
     "git-config": "0.0.7",
     "moment": "^2.10.6",
     "nedb": "^1.4.0"
+  },
+  "devDependencies": {
+    "chai": "^3.4.1",
+    "mocha": "^2.3.4"
   }
 }

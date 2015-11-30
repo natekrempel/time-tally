@@ -1,26 +1,21 @@
-var Datastore = require('nedb'),
-    fs = require('fs'),
-    gitConfig = require('git-config'),
-    moment = require('moment'),
-    db = {};
+var moment = require('moment'),
+    Datastore = require('nedb');
 
 /**
- * Tally up how long you work on a project with a simple gulp task
+ * Tally up how long you work on a project with a simple gulp tasks
  * @class
  */
-function TimeTally() {
-    this.user = gitConfig.sync().user.email;
-    this.packageName = JSON.parse(fs.readFileSync("./package.json")).name;
+function TimeTally(user, packageName) {
+    this.user = user;
+    this.packageName = packageName;
 
-    // Set up local datastore for time logs
-    db = new Datastore({
-        filename: './time-logs/'+this.user+'.json',
+    this.db = new Datastore({
+        filename: './time-logs/'+user+'.json',
         timestampData: true
     });
 
-    db.loadDatabase();
+    this.db.loadDatabase();
 
-    // Hijack stdin so the program will not close instantly
     process.stdin.resume();
 
     // Grab ctrl+c event
@@ -37,94 +32,132 @@ function TimeTally() {
  */
 TimeTally.prototype.startTimer = function (cb) {
     var newLog = {
-        "projectName": this.packageName,
-        "startTime": new Date()
+        'projectName': this.packageName,
+        'startTime': new Date()
     };
 
-    db.insert(newLog, function(){
-        console.log(" ===== START TIMER =====");
-        cb();
+    this.db.insert(newLog, function(err){
+        console.log(' ===== START TIMER =====');
+        cb(err);
     });
 };
 
 /**
  * Stop the timer / add the current time and total duration for the last log
  * @memberOf TimeTally
- * @param {object} err - catches an error if the process is not ended with 'SIGINT' or by a 'uncaughtException'
  */
-TimeTally.prototype.endTimer = function (err) {
-    var newDate = new Date(),
-        end = moment(newDate);
+TimeTally.prototype.endTimer = function () {
+    // this.getStartTime(this.updateEndTime.bind(this));
 
-    if (err) console.log(err.stack);
+    this.getStartTime(function(err, start){
+        if(err) {
+            console.error('Error getting the start time for the current timer - ', err);
+            return;
+        }
 
-    db.find({endTime: {$exists: false}}, function(err, docs){
+        this.updateEndTime(start,function(err, total){
+            if(err) {
+                console.error('Error updating the endTime field in the current timer log - ', err);
+                return;
+            }
 
-        var start = moment(docs[0].startTime),
-            total = end.diff(start),
-            sessDur = moment.duration(total),
-            endTimeLog = {
-                endTime: newDate,
-                duration: total
-            };
-
-        db.update({endTime: {$exists: false}}, {$set: endTimeLog}, {}, function(err, numReplaced, newDoc){
-            console.log(" ===== END TIMER =====");
-            console.log("Session Duration - "+sessDur._data.hours+"hrs", sessDur._data.minutes+"min", sessDur._data.seconds+"s");
+            this.logDuration(total);
             process.exit();
-        });
-    });
 
+        }.bind(this));
+
+    }.bind(this));
+
+};
+
+TimeTally.prototype.getStartTime = function (cb) {
+    this.db.find({
+        endTime: {$exists: false}
+    }, function(err, docs){
+        var start = moment(docs[0].startTime);
+        if (err) return cb(err);
+        cb(null, start);
+    });
+};
+
+TimeTally.prototype.updateEndTime = function(start, cb) {
+
+    var endTimeLog = this.calcEndLog(new Date(), start);
+
+    this.db.update({
+        endTime: {$exists: false}
+    },{
+        $set: endTimeLog
+    },{},function(err){
+        console.log(' ===== END TIMER =====');
+        if(err) return cb(err);
+        cb(null, endTimeLog.duration);
+    });
+};
+
+TimeTally.prototype.calcEndLog = function (currentTime,startTime) {
+    var end = moment(currentTime),
+        total = end.diff(startTime),
+        endTimeLog = {
+            endTime: currentTime,
+            duration: total
+        };
+
+    return endTimeLog;
+};
+
+TimeTally.prototype.logDuration = function(total) {
+    var duration = moment.duration(total)._data;
+    console.log(duration.hours+'hrs', duration.minutes+'min', duration.seconds+'s');
+};
+
+TimeTally.prototype.combineDocs = function (docs) {
+    var total = 0,
+        i;
+    for (i = 0; i < docs.length; i++) {
+        total += docs[i].duration;
+    }
+
+    this.logDuration(total);
 };
 
 /**
  * Log out to the CLI the total of all duration fields for the project
  * @memberOf TimeTally
  */
-TimeTally.prototype.total = function () {
-    var total = 0,
-        i;
+TimeTally.prototype.total = function (cb) {
+    this.db.loadDatabase();
+    this.db.find({
+        duration: {$exists: true}
+    }, function(err, docs){
+        if(err) return cb(err);
+        this.combineDocs(docs);
+        cb();
 
-    db.loadDatabase();
-    db.find({duration: {$exists: true}}, function(err, docs){
-
-        for (i = 0; i < docs.length; i++) {
-            console.log(docs[i]._id, moment.duration(docs[i].duration)._data.hours);
-            total += docs[i].duration;
-        }
-
-        total = moment.duration(total);
-        // Log out Time for the entirety of the project
-        console.log(total._data.hours+"hrs", total._data.minutes+"min", total._data.seconds+"s");
-        process.exit();
-    });
+    }.bind(this));
 };
 
 /**
  * Log out to the CLI the total of all duration fields for the current day
  * @memberOf TimeTally
  */
-TimeTally.prototype.dayTotal = function () {
-    var today = new Date(),
-        total = 0,
-        i;
-
-    db.loadDatabase();
-    db.find({
+TimeTally.prototype.dayTotal = function (cb) {
+    this.db.loadDatabase();
+    this.db.find({
         duration: {$exists: true},
         $where: function(){
             return moment(this.startTime).isSame(new Date(), 'day');
         }
     }, function(err, docs){
-        for (i = 0; i < docs.length; i++) {
-            total += docs[i].duration;
-        }
+        if(err) return cb(err);
+        this.combineDocs(docs);
+        cb();
 
-        total = moment.duration(total);
-        // Log out Time for the day
-        console.log(total._data.hours+"hrs", total._data.minutes+"min", total._data.seconds+"s");
-        process.exit();
-    });
+    }.bind(this));
+};
+
+TimeTally.prototype.destroy = function() {
+
 };
 
 module.exports = TimeTally;
